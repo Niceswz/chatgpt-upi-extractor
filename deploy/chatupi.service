@@ -1,0 +1,24 @@
+[Unit]
+Description=CHATUPI standalone FastAPI service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chatupi
+Group=chatupi
+WorkingDirectory=/opt/chatupi
+EnvironmentFile=/opt/chatupi/.env
+ExecStart=/opt/chatupi/.venv/bin/uvicorn api_python.main:app --host 127.0.0.1 --port 8104 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=4
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/chatupi/data /opt/chatupi/run-output
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

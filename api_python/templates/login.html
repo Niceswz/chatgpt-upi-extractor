@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>CHATUPI Login</title>
+  <style>
+    :root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07101f;color:#e7edf8;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}.card{width:min(92vw,420px);padding:34px;border:1px solid #24334d;border-radius:24px;background:linear-gradient(145deg,#111c30,#0a1425);box-shadow:0 24px 80px #0008}.mark{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:#4f7cff;color:#fff;font-weight:900}h1{margin:20px 0 6px;font-size:28px}.muted{color:#8fa0ba;margin:0 0 24px}label{display:block;margin-bottom:8px;color:#b8c5d8}input,button{width:100%;border-radius:12px;padding:13px 14px;font:inherit}input{border:1px solid #2b3a53;background:#07101f;color:#fff;outline:none}input:focus{border-color:#5b83ff;box-shadow:0 0 0 3px #5b83ff22}button{margin-top:14px;border:0;background:#5b83ff;color:#fff;font-weight:750;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.error{min-height:22px;margin:12px 0 0;color:#ff8f9b}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="mark">UPI</div>
+    <h1>CHATUPI</h1>
+    <p class="muted">Standalone ChatGPT UPI link extraction console</p>
+    <form id="loginForm">
+      <label for="password">Access password</label>
+      <input id="password" type="password" autocomplete="current-password" required autofocus>
+      <button id="submit" type="submit">Sign in</button>
+      <p id="error" class="error" role="alert"></p>
+    </form>
+  </main>
+  <script>
+    const base={{ base_path|tojson }};
+    const form=document.querySelector('#loginForm'),button=document.querySelector('#submit'),error=document.querySelector('#error');
+    form.addEventListener('submit',async(e)=>{e.preventDefault();button.disabled=true;error.textContent='';try{const response=await fetch(`${base}/api/auth/login`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.querySelector('#password').value})});const data=await response.json();if(!response.ok)throw new Error(data.error||'Sign-in failed');location.href=`${base}/`;}catch(err){error.textContent=err.message||'Sign-in failed';}finally{button.disabled=false;}});
+  </script>
+</body>
+</html>
