@@ -1,8 +1,5 @@
 # CHATUPI — ChatGPT UPI 免费支付链接提取工具
 
-> 📣 **更多 AI 福利羊毛信息，欢迎加入 Telegram 频道：[Free\_to\_AI](https://t.me/Free_to_AI)**
-> 专注分享 AI 平台漏洞、限时优惠、免费额度等第一手羊毛情报！
-
 ---
 
 ## 项目简介
@@ -103,17 +100,5 @@ lucide-react
 MIT — 详见 [LICENSE](LICENSE)。
 
 ---
-
-## 📢 欢迎关注 Telegram 频道
-
-如果你对 **AI 平台漏洞福利、限免资源、羊毛情报** 感兴趣，欢迎加入：
-
-**👉 [https://t.me/Free\_to\_AI](https://t.me/Free_to_AI)**
-
-频道内容包括：
-- 🐑 各大 AI 平台（ChatGPT、Claude、Gemini 等）免费额度薅羊毛攻略
-- 🔓 AI 账号注册与使用技巧
-- 💰 限时优惠、促销活动第一时间推送
-- 🛠️ 开源工具与实用脚本分享
 
 **欢迎转发、Star 本项目，让更多人受益！** 🌟
