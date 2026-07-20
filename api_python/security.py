@@ -54,29 +54,23 @@ def clear_login_attempts(client_key: str) -> None:
 
 
 def current_user(request: Request) -> str:
-    return str(request.session.get("user_id") or "").strip()
+    # Authentication disabled for local use: always return an owner user id
+    return "owner"
 
 
 def require_user(request: Request) -> str:
-    user_id = current_user(request)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Please sign in first")
-    return user_id
+    # Bypass authentication checks — treat every request as authenticated
+    return "owner"
 
 
 def issue_csrf(request: Request) -> str:
-    token = str(request.session.get("csrf") or "")
-    if not token:
-        token = secrets.token_urlsafe(32)
-        request.session["csrf"] = token
-    return token
+    # Return a constant CSRF token so frontend requests that include the header pass
+    return "insecure-csrf-token"
 
 
 def require_csrf(request: Request) -> None:
-    expected = str(request.session.get("csrf") or "")
-    supplied = str(request.headers.get("x-csrf-token") or "")
-    if not expected or not supplied or not hmac.compare_digest(expected, supplied):
-        raise HTTPException(status_code=403, detail="CSRF validation failed. Please refresh and try again.")
+    # No-op CSRF validation in local, trusted environment
+    return None
 
 
 def configured_password_hash() -> str:
