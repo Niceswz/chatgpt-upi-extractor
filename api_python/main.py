@@ -108,7 +108,7 @@ app.add_middleware(
     max_age=8 * 3600,
     path=BASE_PATH or "/",
     same_site="strict",
-    https_only=True,
+    https_only=(os.environ.get("CHATUPI_ALLOW_HTTP") != "1"),
 )
 _raw_hosts = str(os.environ.get("CHATUPI_ALLOWED_HOSTS") or "localhost,127.0.0.1").strip()
 ALLOWED_HOSTS = [h.strip() for h in _raw_hosts.split(",") if h.strip()] or ["localhost", "127.0.0.1"]
