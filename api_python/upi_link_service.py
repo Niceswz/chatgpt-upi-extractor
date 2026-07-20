@@ -383,6 +383,51 @@ def _load_env_file() -> None:
     except Exception:
         pass
 
+
+def save_upi_proxies(india_proxy: str, promotion_proxy: str) -> None:
+    """Persist UPI proxy settings to env_upi_link.txt and update os.environ.
+
+    This writes only the two proxy variables and leaves other env entries untouched.
+    """
+    try:
+        path = os.path.join(_project_root(), 'env_upi_link.txt')
+        lines = []
+        if os.path.isfile(path):
+            try:
+                with open(path, encoding='utf-8') as fh:
+                    for raw in fh:
+                        line = raw.rstrip('\n')
+                        if not line or line.strip().startswith('#') or '=' not in line:
+                            lines.append(line)
+                            continue
+                        key = line.split('=', 1)[0].strip()
+                        if key in ('UPI_LINK_PROXY', 'UPI_LINK_PROMOTION_PROXY'):
+                            # skip existing, we'll write updated below
+                            continue
+                        lines.append(line)
+            except Exception:
+                lines = []
+        # append updated proxy lines
+        if india_proxy is None:
+            india_proxy = ''
+        if promotion_proxy is None:
+            promotion_proxy = ''
+        lines.append(f'UPI_LINK_PROXY={india_proxy}')
+        lines.append(f'UPI_LINK_PROMOTION_PROXY={promotion_proxy}')
+        # atomic write
+        tmp = f'{path}.tmp'
+        with open(tmp, 'w', encoding='utf-8') as fh:
+            fh.write('\n'.join(lines) + '\n')
+        os.replace(tmp, path)
+        # update environment for current process
+        if india_proxy is not None:
+            os.environ['UPI_LINK_PROXY'] = str(india_proxy or '').strip()
+        if promotion_proxy is not None:
+            os.environ['UPI_LINK_PROMOTION_PROXY'] = str(promotion_proxy or '').strip()
+    except Exception:
+        # best-effort; do not raise
+        pass
+
 def resolve_upi_proxy() -> str:
     _load_env_file()
     for key in ('UPI_LINK_PROXY', 'OPENAI_PAY_DEFAULT_PROXY'):

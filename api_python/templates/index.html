@@ -64,9 +64,15 @@
         </div>
         <div class="card">
           <p class="setting-title">Proxy configuration</p>
-          <p class="hint">India proxy</p><code id="indiaProxy" class="proxy">Not configured</code>
-          <p class="hint">Vietnam proxy</p><code id="vnProxy" class="proxy">Not configured</code>
-          <p class="note">Proxy credentials are loaded only from the server environment file (e.g. <code>/opt/chatupi/.env</code>). The console shows masked values only.</p>
+          <p class="hint">India proxy</p>
+          <input id="indiaProxy" type="text" class="proxy" placeholder="http://host:port or http://user:pass@host:port" />
+          <p class="hint">Vietnam proxy</p>
+          <input id="vnProxy" type="text" class="proxy" placeholder="http://host:port or http://user:pass@host:port" />
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            <button id="saveProxies" class="primary">Save proxies</button>
+            <button id="resetProxies" class="secondary">Reset</button>
+          </div>
+          <p class="note">Proxy credentials are loaded from env_upi_link.txt or environment variables on the server. Saving will persist to <code>env_upi_link.txt</code> in the project root. Do not commit credentials to git.</p>
         </div>
         <div class="card">
           <p class="setting-title">Security and retention</p>
@@ -87,7 +93,9 @@
     function toast(text){const el=$('#toast');el.textContent=text;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200)}
     async function api(path,options={}){const opts={credentials:'same-origin',cache:'no-store',...options};opts.headers={...(opts.body?{'Content-Type':'application/json'}:{}),...(options.headers||{})};if(opts.method&&opts.method!=='GET')opts.headers['X-CSRF-Token']=CSRF;const response=await fetch(`${BASE}${path}`,opts);let data={};try{data=await response.json()}catch{}if(response.status===401){location.href=`${BASE}/login`;throw new Error('Session expired')}if(!response.ok)throw new Error(data.error||`Request failed (${response.status})`);return data}
     function badge(el,ok,on='Configured',off='Not configured'){el.textContent=ok?on:off;el.className=`pill ${ok?'ok':'bad'}`}
-    async function loadConfig(){try{config=await api('/api/config');badge($('#indiaStatus'),config.india_proxy_configured);badge($('#vnStatus'),config.promotion_proxy_configured);badge($('#modeStatus'),config.mode==='online','Online','Maintenance');$('#settingMode').textContent=config.mode==='online'?'Online':'Maintenance';$('#indiaProxy').textContent=config.india_proxy_masked||'Not configured';$('#vnProxy').textContent=config.promotion_proxy_masked||'Not configured';$('#hourlyLimit').textContent=config.hourly_limit;}catch(err){toast(err.message)}}
+    async function loadConfig(){try{config=await api('/api/config');badge($('#indiaStatus'),config.india_proxy_configured);badge($('#vnStatus'),config.promotion_proxy_configured);badge($('#modeStatus'),config.mode==='online','Online','Maintenance');$('#settingMode').textContent=config.mode==='online'?'Online':'Maintenance';$('#hourlyLimit').textContent=config.hourly_limit;try{const p = await api('/api/settings/upi-link-proxy?t=' + Date.now()); $('#indiaProxy').value = p.proxy || ''; $('#vnProxy').value = p.promotion_proxy || ''; }catch(e){ /* ignore */ } }catch(err){toast(err.message)}}
+
+    $('#toggleMode').onclick=async()=>{try{const next=config.mode==='online'?'offline':'online';await api('/api/settings/mode',{method:'POST',body:JSON.stringify({mode:next})});await loadConfig();toast(next==='online'?'Switched to online':'Switched to maintenance')}catch(err){toast(err.message)}};
     function setProgress(value,text){$('#progressWrap').hidden=false;$('#bar').style.width=`${value}%`;$('#progressText').textContent=text}
     function renderSteps(items){const list=$('#steps');list.replaceChildren();(items||[]).forEach(step=>{const li=document.createElement('li');li.textContent=`[${step.status||'info'}] ${step.name||''}${step.detail?`: ${step.detail}`:''}`;list.append(li)})}
     function showResult(url){const box=$('#result');box.classList.remove('empty');box.replaceChildren();const title=document.createElement('h3');title.textContent='UPI payment link';const code=document.createElement('code');code.className='url';code.textContent=url;const actions=document.createElement('div');actions.className='actions';const copy=document.createElement('button');copy.className='secondary';copy.textContent='Copy link';copy.onclick=async()=>{await navigator.clipboard.writeText(url);toast('Copied')};const open=document.createElement('button');open.className='primary';open.textContent='Open link';open.onclick=()=>window.open(url,'_blank','noopener');actions.append(copy,open);box.append(title,code,actions)}
@@ -100,7 +108,11 @@
     document.querySelectorAll('.tab').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===button));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===button.dataset.tab));if(button.dataset.tab==='records')loadRecords()}));
     $('#toggleMode').onclick=async()=>{try{const next=config.mode==='online'?'offline':'online';await api('/api/settings/mode',{method:'POST',body:JSON.stringify({mode:next})});await loadConfig();toast(next==='online'?'Switched to online':'Switched to maintenance')}catch(err){toast(err.message)}};
     $('#logout').onclick=async()=>{try{await api('/api/auth/logout',{method:'POST'});}finally{location.href=`${BASE}/login`}};
-    loadConfig();
+
+        $('#saveProxies').onclick=async()=>{const proxy = $('#indiaProxy').value.trim(); const promo = $('#vnProxy').value.trim(); try{ await api('/api/settings/upi-link-proxy',{method:'POST',body:JSON.stringify({proxy:proxy,promotion_proxy:promo})}); toast('Proxies saved'); await loadConfig(); }catch(err){toast(err.message)}};
+        $('#resetProxies').onclick=async()=>{ if(!confirm('Reset proxies to current server values?')) return; await loadConfig(); };
+
+        loadConfig();
   </script>
 </body>
 </html>

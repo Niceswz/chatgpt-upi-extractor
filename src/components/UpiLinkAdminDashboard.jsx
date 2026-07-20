@@ -49,6 +49,8 @@ const UpiLinkAdminDashboard = ({
   const [submitModeSaving, setSubmitModeSaving] = useState(false);
   const [proxyMasked, setProxyMasked] = useState('');
   const [promotionProxyMasked, setPromotionProxyMasked] = useState('');
+  const [proxyMaskedEditable, setProxyMaskedEditable] = useState('');
+  const [promotionProxyMaskedEditable, setPromotionProxyMaskedEditable] = useState('');
   const [proxyLoading, setProxyLoading] = useState(false);
   const [records, setRecords] = useState([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
@@ -90,6 +92,9 @@ const UpiLinkAdminDashboard = ({
       const data = await res.json();
       setProxyMasked(String(data?.proxyMasked || '').trim());
       setPromotionProxyMasked(String(data?.promotionProxyMasked || '').trim());
+      // populate editable fields with full proxy values if available
+      setProxyMaskedEditable(String(data?.proxy || '').trim());
+      setPromotionProxyMaskedEditable(String(data?.promotion_proxy || '').trim());
     } catch {
       setProxyMasked('');
       setPromotionProxyMasked('');
@@ -346,15 +351,48 @@ const UpiLinkAdminDashboard = ({
               <div className="space-y-2">
                 <div>
                   <p className="mb-1 text-xs font-semibold text-slate-500">India UPI proxy (UPI_LINK_PROXY)</p>
-                  <code className="block break-all rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-xs text-slate-700">
-                    {proxyMasked || '(not configured)'}
-                  </code>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={proxyMaskedEditable}
+                      onChange={(e) => setProxyMaskedEditable(e.target.value)}
+                      placeholder="http://host:port or http://user:pass@host:port"
+                      className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-xs text-slate-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setProxyLoading(true);
+                        try {
+                          const res = await fetchAdminAuthed(`${apiBase}/api/settings/upi-link-proxy`, fetchOpts('POST', { proxy: proxyMaskedEditable, promotion_proxy: promotionProxyMaskedEditable }));
+                          const data = await res.json();
+                          if (!res.ok || !data.success) throw new Error(data.error || 'Save failed');
+                          setProxyMasked(String(data.proxy || ''));
+                          setPromotionProxyMasked(String(data.promotion_proxy || ''));
+                          setProxyMaskedEditable(String(data.proxy || ''));
+                          setPromotionProxyMaskedEditable(String(data.promotion_proxy || ''));
+                          toast('Saved');
+                        } catch (err) {
+                          window.alert(err.message || 'Save failed');
+                        } finally {
+                          setProxyLoading(false);
+                        }
+                      }}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60"
+                    >
+                      Save
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <p className="mb-1 text-xs font-semibold text-slate-500">Vietnam promo proxy (UPI_LINK_PROMOTION_PROXY)</p>
-                  <code className="block break-all rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-xs text-slate-700">
-                    {promotionProxyMasked || '(not configured)'}
-                  </code>
+                  <input
+                    type="text"
+                    value={promotionProxyMaskedEditable}
+                    onChange={(e) => setPromotionProxyMaskedEditable(e.target.value)}
+                    placeholder="http://host:port or http://user:pass@host:port"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-xs text-slate-700"
+                  />
                 </div>
               </div>
             </div>

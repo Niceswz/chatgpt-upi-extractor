@@ -201,6 +201,35 @@ async def save_mode(request: Request, body: ModeBody):
     return {"success": True, "mode": mode}
 
 
+class ProxyBody(BaseModel):
+    proxy: str | None = None
+    promotion_proxy: str | None = None
+
+
+@app.get("/api/settings/upi-link-proxy")
+async def get_upi_link_proxy(request: Request):
+    require_user(request)
+    india = resolve_upi_proxy()
+    promotion = resolve_upi_promotion_proxy(india)
+    return {"success": True, "proxy": india or "", "promotion_proxy": promotion or "", "proxyMasked": _mask_proxy(india), "promotionProxyMasked": _mask_proxy(promotion)}
+
+
+@app.post("/api/settings/upi-link-proxy")
+async def set_upi_link_proxy(request: Request, body: ProxyBody):
+    require_user(request)
+    require_csrf(request)
+    try:
+        # save to env file and update process env
+        from .upi_link_service import save_upi_proxies
+
+        save_upi_proxies(body.proxy or "", body.promotion_proxy or "")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    india = resolve_upi_proxy()
+    promotion = resolve_upi_promotion_proxy(india)
+    return {"success": True, "proxy": india or "", "promotion_proxy": promotion or "", "proxyMasked": _mask_proxy(india), "promotionProxyMasked": _mask_proxy(promotion)}
+
+
 def _hourly_usage(user_id: str) -> int:
     with get_primary_db() as conn:
         row = conn.execute(
