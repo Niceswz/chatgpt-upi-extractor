@@ -101,4 +101,8 @@ MIT — 详见 [LICENSE](LICENSE)。
 
 ---
 
+## 友情链接
+
+**👉 [linux.do](https://linux.do)**
+
 **欢迎转发、Star 本项目，让更多人受益！** 🌟
