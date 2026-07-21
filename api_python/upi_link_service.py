@@ -51,7 +51,9 @@ _JOB_TTL_SEC = 3600
 UPI_JOB_STALE_SEC = 360
 MAX_REDIRECT_POLL_ATTEMPTS = 15
 APPROVED_REDIRECT_POLL_ATTEMPTS = 20
-UPI_EXTRACT_CONCURRENCY = 1
+UPI_EXTRACT_CONCURRENCY = 10
+# Fallback semaphore for platforms without fcntl (e.g., Windows)
+_extract_semaphore = threading.Semaphore(UPI_EXTRACT_CONCURRENCY)
 UPI_EXTRACT_QUEUE_WAIT_SEC = 600
 
 def _extract_lock_path() -> str:
@@ -141,39 +143,67 @@ def get_upi_queue_snapshot(job_id: str='') -> dict[str, Any]:
     return {'queue_status': 'running' if active and (not jid) else '', 'queue_ahead': 0, 'queue_size': queue_size}
 
 def _acquire_extract_slot(job_id: str) -> int:
-    if fcntl is None:
-        return -1
-    if UPI_EXTRACT_CONCURRENCY != 1:
-        return -1
-    path = _extract_lock_path()
-    fd = os.open(path, os.O_CREAT | os.O_RDWR, 420)
-    deadline = time.time() + UPI_EXTRACT_QUEUE_WAIT_SEC
-    queued = False
-    while True:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            if queued:
-                _persist_job_progress(job_id, steps=[{'name': 'queue wait', 'status': 'ok', 'detail': 'Extract slot acquired; starting'}], status='processing')
-            return fd
-        except BlockingIOError:
+    # If fcntl is available and concurrency is set to the legacy 1, keep file-lock behavior
+    if fcntl is not None and UPI_EXTRACT_CONCURRENCY == 1:
+        path = _extract_lock_path()
+        fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o666)
+        deadline = time.time() + UPI_EXTRACT_QUEUE_WAIT_SEC
+        queued = False
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if queued:
+                    _persist_job_progress(job_id, steps=[{'name': 'queue wait', 'status': 'ok', 'detail': 'Extract slot acquired; starting'}], status='processing')
+                return fd
+            except BlockingIOError:
+                if not queued:
+                    queued = True
+                    _persist_job_progress(job_id, steps=[{'name': 'queue wait', 'status': 'queued', 'detail': 'Another extraction is running; queued (1 concurrent account max)'}], status='processing')
+                if time.time() >= deadline:
+                    os.close(fd)
+                    raise RuntimeError('extract queue timeout: another extraction is still running; retry later')
+                time.sleep(2.0)
+
+    # For higher concurrency or platforms without fcntl, use an in-process semaphore
+    if UPI_EXTRACT_CONCURRENCY > 0:
+        deadline = time.time() + UPI_EXTRACT_QUEUE_WAIT_SEC
+        queued = False
+        while True:
+            acquired = _extract_semaphore.acquire(blocking=False)
+            if acquired:
+                if queued:
+                    _persist_job_progress(job_id, steps=[{'name': 'queue wait', 'status': 'ok', 'detail': f'Extract slot acquired; starting (max {UPI_EXTRACT_CONCURRENCY} concurrent)'}], status='processing')
+                return 1
             if not queued:
                 queued = True
-                _persist_job_progress(job_id, steps=[{'name': 'queue wait', 'status': 'queued', 'detail': 'Another extraction is running; queued (1 concurrent account max)'}], status='processing')
+                _persist_job_progress(job_id, steps=[{'name': 'queue wait', 'status': 'queued', 'detail': f'Another extraction is running; queued (max {UPI_EXTRACT_CONCURRENCY} concurrent)'}], status='processing')
             if time.time() >= deadline:
-                os.close(fd)
-                raise RuntimeError('extract queue timeout: another extraction is still running; retry later')
-            time.sleep(2.0)
+                raise RuntimeError('extract queue timeout: concurrency limit reached; retry later')
+            time.sleep(1.0)
+
+    return -1
+
 
 def _release_extract_slot(fd: int) -> None:
-    if fd < 0 or fcntl is None:
-        return
+    # fd == 1 is our semaphore token
     try:
-        fcntl.flock(fd, fcntl.LOCK_UN)
-    finally:
+        if fd == 1 and UPI_EXTRACT_CONCURRENCY > 0:
+            try:
+                _extract_semaphore.release()
+            except Exception:
+                pass
+            return
+        if fd < 0 or fcntl is None:
+            return
         try:
-            os.close(fd)
-        except OSError:
-            pass
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+    except Exception:
+        pass
 
 def _recover_stale_job(job: dict[str, Any]) -> dict[str, Any]:
     if str(job.get('status') or '') != 'processing':
@@ -428,10 +458,35 @@ def save_upi_proxies(india_proxy: str, promotion_proxy: str) -> None:
         # best-effort; do not raise
         pass
 
-def resolve_upi_proxy() -> str:
+def _pick_env_proxy_value(key: str) -> str:
+    """Pick a single proxy value from an environment variable that may contain multiple newline-separated entries."""
     _load_env_file()
+    raw = str(os.environ.get(key) or '').strip()
+    if not raw:
+        return ''
+    # split by newline and comma, prefer lines
+    parts = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # allow comma-separated on single line too
+        if ',' in line and '://' not in line:
+            for p in line.split(','):
+                p = p.strip()
+                if p:
+                    parts.append(p)
+        else:
+            parts.append(line)
+    if not parts:
+        return raw
+    return random.choice(parts)
+
+
+def resolve_upi_proxy() -> str:
+    # support multiple proxies in env by picking one at random
     for key in ('UPI_LINK_PROXY', 'OPENAI_PAY_DEFAULT_PROXY'):
-        val = str(os.environ.get(key) or '').strip()
+        val = _pick_env_proxy_value(key)
         if val:
             return val
     return DEFAULT_LOCAL_PROXY
@@ -484,8 +539,8 @@ def _rt_proxy_from_env() -> str:
     return ''
 
 def resolve_upi_promotion_proxy(base_proxy: str='') -> str:
-    _load_env_file()
-    dedicated = str(os.environ.get('UPI_LINK_PROMOTION_PROXY') or '').strip()
+    # prefer explicit promotion proxy; support multiple entries
+    dedicated = _pick_env_proxy_value('UPI_LINK_PROMOTION_PROXY')
     if dedicated:
         return proxy_for_region(dedicated, PROMOTION_REGION) or dedicated
     base = str(base_proxy or resolve_upi_proxy()).strip()

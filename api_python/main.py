@@ -253,16 +253,40 @@ async def extract(request: Request, body: ExtractBody):
     dedicated_promotion = str(os.environ.get("UPI_LINK_PROMOTION_PROXY") or "").strip()
     if not india or not promotion or not dedicated_promotion:
         raise HTTPException(status_code=503, detail="India proxy or Vietnam promotion proxy is not configured")
-    if _hourly_usage(user_id) >= HOURLY_LIMIT:
-        raise HTTPException(status_code=429, detail="Hourly job limit reached")
-    raw = body.access_token.strip()
-    if not (raw.startswith("{") or raw.lower().startswith("bearer ") or raw.count(".") >= 2):
-        raise HTTPException(status_code=400, detail="Please paste a full Session JSON or a valid accessToken")
-    result = await asyncio.to_thread(start_upi_link_extract, raw, user_id=user_id)
-    if not result.get("success"):
-        error = sanitize_upi_extract_message(result.get("error")) or "Failed to create job"
-        raise HTTPException(status_code=400, detail=error)
-    return result
+    raw = body.access_token or ''
+    # support newline-separated multiple tokens / session JSONs
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    if not lines:
+        # also allow single-line input
+        raw = raw.strip()
+        if not (raw.startswith("{") or raw.lower().startswith("bearer ") or raw.count(".") >= 2):
+            raise HTTPException(status_code=400, detail="Please paste a full Session JSON or a valid accessToken")
+        lines = [raw]
+    # enforce sane limits
+    if len(lines) > 50:
+        raise HTTPException(status_code=400, detail="Too many tokens in one request (max 50)")
+    if _hourly_usage(user_id) + len(lines) > HOURLY_LIMIT:
+        raise HTTPException(status_code=429, detail="Hourly job limit reached for this user with requested batch size")
+
+    results: list[dict] = []
+    for item in lines:
+        res = await asyncio.to_thread(start_upi_link_extract, item, user_id=user_id)
+        results.append(res)
+    # if single, return old shape for backward compatibility
+    if len(results) == 1:
+        result = results[0]
+        if not result.get("success"):
+            error = sanitize_upi_extract_message(result.get("error")) or "Failed to create job"
+            raise HTTPException(status_code=400, detail=error)
+        return result
+    # multiple
+    jobs = []
+    for r in results:
+        if r.get('success'):
+            jobs.append({'job_id': r.get('job_id'), 'status': r.get('status')})
+        else:
+            jobs.append({'success': False, 'error': sanitize_upi_extract_message(r.get('error') or '')})
+    return {'success': True, 'jobs': jobs}
 
 
 @app.get("/api/status")
@@ -281,3 +305,14 @@ async def records(request: Request, search: str = "", limit: int = 80, offset: i
     require_user(request)
     recover_stale_upi_records(max_age_sec=360)
     return {"success": True, **list_upi_link_records(search=search, limit=limit, offset=offset)}
+
+
+# Serve single-page app routes (client-side routing). Return index for non-API paths so deep links like /settings work.
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+async def spa_fallback(request: Request, full_path: str):
+    normalized = str(full_path or "").lstrip('/')
+    # don't override API, health, or login endpoints
+    if normalized.startswith('api') or normalized in ('login', 'healthz'):
+        raise HTTPException(status_code=404, detail="Not Found")
+    csrf = issue_csrf(request)
+    return templates.TemplateResponse(request=request, name="index.html", context={"base_path": BASE_PATH, "csrf_token": csrf})
