@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -65,9 +65,9 @@
         <div class="card">
           <p class="setting-title">Proxy configuration</p>
           <p class="hint">India proxy</p>
-          <input id="indiaProxy" type="text" class="proxy" placeholder="http://host:port or http://user:pass@host:port" />
+          <textarea id="indiaProxy" class="proxy" placeholder="One proxy per line, e.g. http://host:port or user:pass@host:port" rows="4"></textarea>
           <p class="hint">Vietnam proxy</p>
-          <input id="vnProxy" type="text" class="proxy" placeholder="http://host:port or http://user:pass@host:port" />
+          <textarea id="vnProxy" class="proxy" placeholder="One proxy per line for promotion proxies" rows="4"></textarea>
           <div style="margin-top:8px;display:flex;gap:8px;">
             <button id="saveProxies" class="primary">Save proxies</button>
             <button id="resetProxies" class="secondary">Reset</button>
@@ -132,3 +132,4 @@
   </script>
 </body>
 </html>
+

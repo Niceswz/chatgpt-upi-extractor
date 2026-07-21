@@ -53,24 +53,48 @@ def clear_login_attempts(client_key: str) -> None:
     _ATTEMPTS.pop(client_key, None)
 
 
+# Development bypass flag: set CHATUPI_DEV_AUTH_BYPASS=0 to disable the local bypass
+_DEV_BYPASS = str(os.environ.get('CHATUPI_DEV_AUTH_BYPASS') or '1').lower() in ('1','true','yes')
+
+
 def current_user(request: Request) -> str:
-    # Authentication disabled for local use: always return an owner user id
-    return "owner"
+    """Return current user id.
+
+    In local development mode (CHATUPI_DEV_AUTH_BYPASS=1) the function returns a default 'owner'.
+    When the bypass is disabled, a minimal check reads the X-User-Id header as a convenience for scripted auth
+    or raises HTTP 401 if missing. This keeps behavior explicit and avoids silently granting access in
+    non-dev environments.
+    """
+    if _DEV_BYPASS:
+        return "owner"
+    # minimal non-dev fallback: allow scripted header or reject
+    uid = str(request.headers.get('X-User-Id') or '').strip()
+    if uid:
+        return uid
+    raise HTTPException(status_code=401, detail='Authentication required')
 
 
 def require_user(request: Request) -> str:
-    # Bypass authentication checks — treat every request as authenticated
-    return "owner"
+    if _DEV_BYPASS:
+        return "owner"
+    return current_user(request)
 
 
 def issue_csrf(request: Request) -> str:
-    # Return a constant CSRF token so frontend requests that include the header pass
-    return "insecure-csrf-token"
+    if _DEV_BYPASS:
+        return "insecure-csrf-token"
+    # In non-dev mode, produce a simple time-based token (not secure, intended as placeholder).
+    # Real deployments should replace with proper session CSRF tokens.
+    return str(int(time.time()))
 
 
 def require_csrf(request: Request) -> None:
-    # No-op CSRF validation in local, trusted environment
-    return None
+    if _DEV_BYPASS:
+        return None
+    # In non-dev mode, validate the X-CSRF-Token header matches issue_csrf()
+    header = str(request.headers.get('X-CSRF-Token') or '').strip()
+    if not header or header != issue_csrf(request):
+        raise HTTPException(status_code=403, detail='Invalid CSRF token')
 
 
 def configured_password_hash() -> str:
